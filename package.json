@@ -32,10 +32,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/nvm-manager.git"
+    "url": "https://github.com/akhil16/nvm-manager.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/nvm-manager/issues"
+    "url": "https://github.com/akhil16/nvm-manager/issues"
   },
-  "homepage": "https://github.com/your-username/nvm-manager#readme"
+  "homepage": "https://github.com/akhil16/nvm-manager#readme"
 }
