@@ -1,0 +1,41 @@
+{
+  "name": "nvm-manager",
+  "version": "1.0.0",
+  "description": "A modern CLI tool to manage Node.js versions and global packages using nvm",
+  "main": "src/index.js",
+  "bin": {
+    "nvm-manager": "./bin/nvm-manager"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "nvm",
+    "node",
+    "nodejs",
+    "version-manager",
+    "global-packages",
+    "cli"
+  ],
+  "author": "Generated with AI assistance",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^9.4.1",
+    "execa": "^5.1.1",
+    "inquirer": "^8.2.5",
+    "ora": "^5.4.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/nvm-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/nvm-manager/issues"
+  },
+  "homepage": "https://github.com/your-username/nvm-manager#readme"
+}
