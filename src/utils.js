@@ -1,8 +1,9 @@
-const { execa } = require('execa');
+const execa = require('execa');
 const chalk = require('chalk');
 const ora = require('ora');
 const os = require('os');
 const path = require('path');
+const inquirer = require('inquirer');
 
 /**
  * Normalize user input (lowercase and trim spaces)
@@ -33,7 +34,7 @@ async function getLatestLtsVersion() {
     const { stdout } = await execa('nvm', ['list', 'available'], { shell: true });
     const lines = stdout.split('\n');
 
-    // Skip header lines and find first version
+    // Skip header lines and find first valid version
     for (let i = 2; i < lines.length; i++) {
       const parts = lines[i].trim().split(/\s+/);
       if (parts.length >= 2 && /^\d+\.\d+\.\d+$/.test(parts[1])) {
@@ -58,13 +59,13 @@ function getNvmDir() {
  * Switch to a specific Node.js version
  */
 async function switchNodeVersion(version) {
-  const spinner = ora(`Switching to Node.js version \${version}...`).start();
+  const spinner = ora(`Switching to Node.js version ${version}...`).start();
   try {
     await execa('nvm', ['use', version], { shell: true });
-    spinner.succeed(`Switched to Node.js version \${version}`);
+    spinner.succeed(`Switched to Node.js version ${version}`);
     return true;
   } catch (error) {
-    spinner.fail(`Failed to switch to Node.js version \${version}`);
+    spinner.fail(`Failed to switch to Node.js version ${version}`);
     console.error(chalk.red('Error:'), error.message);
     return false;
   }
@@ -74,13 +75,13 @@ async function switchNodeVersion(version) {
  * Install a Node.js version
  */
 async function installNodeVersion(version) {
-  const spinner = ora(`Installing Node.js version \${version}...`).start();
+  const spinner = ora(`Installing Node.js version ${version}...`).start();
   try {
     await execa('nvm', ['install', version], { shell: true });
-    spinner.succeed(`Installed Node.js version \${version}`);
+    spinner.succeed(`Installed Node.js version ${version}`);
     return true;
   } catch (error) {
-    spinner.fail(`Failed to install Node.js version \${version}`);
+    spinner.fail(`Failed to install Node.js version ${version}`);
     console.error(chalk.red('Error:'), error.message);
     return false;
   }
@@ -94,7 +95,7 @@ async function uninstallNodeVersion(version) {
     await execa('nvm', ['uninstall', version], { shell: true });
     return true;
   } catch (error) {
-    console.error(chalk.red(`Failed to uninstall Node.js version \${version}:`), error.message);
+    console.error(chalk.red(`Failed to uninstall Node.js version ${version}:`), error.message);
     return false;
   }
 }
@@ -127,7 +128,7 @@ async function getInstalledPackageVersion(packageName) {
       return data.dependencies[packageName].version;
     }
     return null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -139,7 +140,7 @@ async function getLatestPackageVersion(packageName) {
   try {
     const { stdout } = await execa('npm', ['view', packageName, 'version'], { shell: true });
     return stdout.trim();
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -151,7 +152,7 @@ async function getPackageDescription(packageName) {
   try {
     const { stdout } = await execa('npm', ['view', packageName, 'description'], { shell: true });
     return stdout.trim() || 'No description available.';
-  } catch (error) {
+  } catch {
     return 'No description available.';
   }
 }
@@ -164,7 +165,7 @@ async function installGlobalPackage(packageName) {
     await execa('npm', ['install', '-g', packageName], { shell: true });
     return true;
   } catch (error) {
-    console.error(chalk.red(`Failed to install \${packageName}:`), error.message);
+    console.error(chalk.red(`Failed to install ${packageName}:`), error.message);
     return false;
   }
 }
@@ -175,8 +176,8 @@ async function installGlobalPackage(packageName) {
 async function isVersionStillListed(version) {
   try {
     const { stdout } = await execa('nvm', ['list'], { shell: true });
-    return stdout.includes(version);
-  } catch (error) {
+    return new RegExp(`\\b${version}\\b`).test(stdout);
+  } catch {
     return false;
   }
 }
@@ -185,13 +186,12 @@ async function isVersionStillListed(version) {
  * Confirm action with user
  */
 function confirmAction(message) {
-  const inquirer = require('inquirer');
   return inquirer.prompt([
     {
       type: 'confirm',
       name: 'confirmed',
       message: message,
-      default: false
+      default: false,
     }
   ]).then(answers => answers.confirmed);
 }
