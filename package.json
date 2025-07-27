@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm i -g . && nvm-manager list-all"
   },
   "keywords": [
     "nvm",
@@ -25,7 +25,8 @@
     "commander": "^9.4.1",
     "execa": "^5.1.1",
     "inquirer": "^8.2.5",
-    "ora": "^5.4.1"
+    "ora": "^5.4.1",
+    "table": "^6.9.0"
   },
   "engines": {
     "node": ">=14.0.0"

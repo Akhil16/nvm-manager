@@ -2,10 +2,11 @@
 
 const { Command } = require('commander');
 const chalk = require('chalk');
-const extractCommand = require('./commands/extract');
+const listAllCommand = require('./commands/list-all');
 const cleanupCommand = require('./commands/cleanup');
 const installCommand = require('./commands/install');
 const fixFailedCommand = require('./commands/fix-failed');
+const migrateCommand = require('./commands/migrate');
 
 const program = new Command();
 
@@ -16,9 +17,15 @@ program
 
 // Add commands
 program
-  .command('extract')
-  .description('Extract global npm packages from all installed Node.js versions')
-  .action(extractCommand);
+  .command('list-all')
+  .description('List global npm packages from specified Node.js versions or all')
+  .option('--json', 'Output data in JSON format instead of a table')
+  .option(
+    '-v, --versions <versions>',
+    'Comma-separated list of Node versions to list. Use "all" for all installed versions (default).'
+  )
+  .action(()=>listAllCommand(program));
+
 
 program
   .command('cleanup')
@@ -35,6 +42,15 @@ program
   .alias('fix')
   .description('Fix phantom Node.js versions that appear in nvm list but cannot be uninstalled')
   .action(fixFailedCommand);
+
+
+program
+  .command('migrate')
+  .description('Migrate global packages to selected Node version')
+  .option('-t, --to <version>', 'Node version to migrate to')
+  .option('-f, --from <version>', 'Node version to migrate from')
+  .option('-y, --yes', 'Install all packages without prompting')
+  .action(()=>migrateCommand(program));
 
 // Show help when no command is provided
 program.on('--help', () => {
