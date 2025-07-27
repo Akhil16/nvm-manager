@@ -32,14 +32,8 @@ nvm-manager migrate
 ## 📦 Installation
 
 ```bash
-# Clone or download this repository
-cd nvm-manager
 
-# Install dependencies
-npm install
-
-# Install globally for command-line usage
-npm install -g .
+npm install -g nvm-manager
 ```
 
 ## 🎯 Usage
