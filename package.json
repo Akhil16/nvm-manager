@@ -1,6 +1,6 @@
 {
   "name": "nvm-manager",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A modern CLI tool to manage Node.js versions and global packages using nvm",
   "main": "src/index.js",
   "bin": {
