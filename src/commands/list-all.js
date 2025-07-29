@@ -5,9 +5,8 @@ const { table } = require('table');
 const inquirer = require('inquirer');
 const {
   getInstalledNodeVersions,
-  switchNodeVersion,
-  getGlobalPackages
-} = require('../utils');
+  getGlobalPackagesForVersion,
+} = require("../utils");
 
 const OUTPUT_FILE = 'nvm-global-packages.txt';
 
@@ -62,15 +61,8 @@ async function listAllCommand(program) {
 
   for (const version of versionsToUse) {
     console.log(chalk.yellow(`\nProcessing Node.js version ${version}...`));
-    const switched = await switchNodeVersion(version);
-
-    if (!switched) {
-      console.log(chalk.red(`Failed to switch to Node version ${version}, skipping...`));
-      continue;
-    }
-
-    const packageSpinner = ora('Getting global packages...').start();
-    const packages = await getGlobalPackages();
+    const packageSpinner = ora("Getting global packages...").start();
+    const packages = await getGlobalPackagesForVersion(version);
     packageSpinner.stop();
 
     if (!packages.length) {

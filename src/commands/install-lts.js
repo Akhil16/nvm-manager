@@ -19,7 +19,11 @@ const PACKAGE_LIST_FILE = 'nvm-global-packages.txt';
 function parsePackageList() {
   if (!fs.existsSync(PACKAGE_LIST_FILE)) {
     console.error(chalk.red(`Error: Package list file '${PACKAGE_LIST_FILE}' not found.`));
-    console.log(chalk.yellow('Please run "nvm-manager extract" first to create the package list.'));
+    console.log(
+      chalk.yellow(
+        'Please run "nvm-manager list-all" first to create the package list.'
+      )
+    );
     return [];
   }
 

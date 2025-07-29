@@ -18,13 +18,124 @@ function normalizeInput(input) {
  * Get installed Node.js versions via `nvm ls`
  * @returns {Promise<string[]>} versions
  */
+// --- Platform helpers ---
+function isWindows() {
+  return process.platform === 'win32';
+}
+
+function getNvmDir() {
+  if (isWindows()) {
+    return process.env.NVM_HOME || path.join(os.homedir(), 'AppData', 'Roaming', 'nvm');
+  } else {
+    return process.env.NVM_DIR || `${process.env.HOME}/.nvm`;
+  }
+}
+
+function getNvmSourceCmd() {
+  const nvmDir = getNvmDir();
+  return `. "${nvmDir}/nvm.sh"`;
+}
+
+async function runNvmCmd(args, opts = {}) {
+  if (isWindows()) {
+    return execa("nvm", args, { shell: true, ...opts });
+  } else {
+    // Source nvm and run the command in a shell session
+    const nvmDir = getNvmDir();
+    const sourceNvm = getNvmSourceCmd();
+    // Build the command string
+    const cmd = `export NVM_DIR=\"${nvmDir}\"; ${sourceNvm}; nvm ${args
+      .map((a) => `'${a}'`)
+      .join(" ")}`;
+    return execa.command(cmd, { shell: true, ...opts });
+  }
+}
+// --- Main utils ---
 async function getInstalledNodeVersions() {
   try {
-    const { stdout } = await execa('nvm', ['ls'], { shell: true });
-    const versions = stdout.match(/\d+\.\d+\.\d+/g) || [];
+    const nvmDir = getNvmDir();
+    let versions = [];
+    if (isWindows()) {
+      // Windows: nvm-windows stores versions in NVM_HOME root
+      const fs = require("fs");
+      if (fs.existsSync(nvmDir)) {
+        versions = fs
+          .readdirSync(nvmDir)
+          .filter(
+            (name) =>
+              /^v?\d+\.\d+\.\d+$/.test(name) &&
+              fs.statSync(path.join(nvmDir, name)).isDirectory()
+          )
+          .map((name) => name.replace(/^v/, ""));
+        if (versions.length === 0) {
+          console.log(
+            chalk.yellow(`[nvm-manager] No versions found in ${nvmDir}`)
+          );
+        }
+      } else {
+        console.log(
+          chalk.yellow(
+            `[nvm-manager] NVM_HOME directory ${nvmDir} does not exist`
+          )
+        );
+      }
+    } else {
+      // Unix: $NVM_DIR/versions/node/* (standard), fallback to $NVM_DIR/* (legacy)
+      const fs = require("fs");
+      let nodeDir = path.join(nvmDir, "versions", "node");
+      if (fs.existsSync(nodeDir)) {
+        // Standard nvm >=0.33.0 layout
+        versions = fs
+          .readdirSync(nodeDir)
+          .filter(
+            (name) =>
+              /^v?\d+\.\d+\.\d+$/.test(name) &&
+              fs.statSync(path.join(nodeDir, name)).isDirectory()
+          )
+          .map((name) => name.replace(/^v/, ""));
+        if (versions.length === 0) {
+          console.log(
+            chalk.yellow(`[nvm-manager] No versions found in ${nodeDir}`)
+          );
+        }
+      } else {
+        // Fallback: legacy layout, versions directly under $NVM_DIR
+        nodeDir = nvmDir;
+        if (fs.existsSync(nodeDir)) {
+          versions = fs
+            .readdirSync(nodeDir)
+            .filter(
+              (name) =>
+                /^v?\d+\.\d+\.\d+$/.test(name) &&
+                fs.statSync(path.join(nodeDir, name)).isDirectory()
+            )
+            .map((name) => name.replace(/^v/, ""));
+          if (versions.length === 0) {
+            console.log(
+              chalk.yellow(
+                `[nvm-manager] No versions found in fallback ${nodeDir}`
+              )
+            );
+          }
+        } else {
+          console.log(
+            chalk.yellow(
+              `[nvm-manager] Neither ${path.join(
+                nvmDir,
+                "versions",
+                "node"
+              )} nor ${nvmDir} exist`
+            )
+          );
+        }
+      }
+    }
     return versions;
   } catch (error) {
-    console.error(chalk.red('Error getting installed Node versions:'), error.message);
+    console.error(
+      chalk.red("Error scanning Node.js version directories:"),
+      error.message
+    );
     return [];
   }
 }
@@ -35,29 +146,33 @@ async function getInstalledNodeVersions() {
  */
 async function getLatestLtsVersion() {
   try {
-    const { stdout } = await execa('nvm', ['list', 'available'], { shell: true });
-    const lines = stdout.split('\n');
-
-    // Skip header lines, extract first valid semver version
-    for (let i = 2; i < lines.length; i++) {
-      const parts = lines[i].trim().split(/\s+/);
-      if (parts.length >= 2 && /^\d+\.\d+\.\d+$/.test(parts[1])) {
-        return parts[1];
+    let stdout;
+    if (isWindows()) {
+      ({ stdout } = await runNvmCmd(["list", "available"]));
+      const ltsLine = stdout.split("\n").find((line) => line.includes("LTS:"));
+      if (ltsLine) {
+        const match = ltsLine.match(/\d+\.\d+\.\d+/);
+        if (match) return match[0];
+      }
+    } else {
+      ({ stdout } = await runNvmCmd(["ls-remote", "--lts"]));
+      const lines = stdout
+        .split("\n")
+        .filter((line) => line.trim().startsWith("v"));
+      if (lines.length) {
+        const last = lines[lines.length - 1];
+        const match = last.match(/\d+\.\d+\.\d+/);
+        if (match) return match[0];
       }
     }
-    throw new Error('Could not detect latest LTS version');
+    throw new Error("Could not detect latest LTS version");
   } catch (error) {
-    console.error(chalk.red('Error getting latest LTS version:'), error.message);
+    console.error(
+      chalk.red("Error getting latest LTS version:"),
+      error.message
+    );
     return null;
   }
-}
-
-/**
- * Get NVM directory path (uses env variable or default path on Windows)
- * @returns {string}
- */
-function getNvmDir() {
-  return process.env.NVM_HOME || path.join(os.homedir(), 'AppData', 'Roaming', 'nvm');
 }
 
 /**
@@ -68,12 +183,12 @@ function getNvmDir() {
 async function switchNodeVersion(version) {
   const spinner = ora(`Switching to Node.js version ${version}...`).start();
   try {
-    await execa('nvm', ['use', version], { shell: true });
+    await runNvmCmd(["use", version]);
     spinner.succeed(`Switched to Node.js version ${version}`);
     return true;
   } catch (error) {
     spinner.fail(`Failed to switch to Node.js version ${version}`);
-    console.error(chalk.red('Error:'), error.message);
+    console.error(chalk.red("Error:"), error.message);
     return false;
   }
 }
@@ -86,12 +201,12 @@ async function switchNodeVersion(version) {
 async function installNodeVersion(version) {
   const spinner = ora(`Installing Node.js version ${version}...`).start();
   try {
-    await execa('nvm', ['install', version], { shell: true });
+    await runNvmCmd(["install", version]);
     spinner.succeed(`Installed Node.js version ${version}`);
     return true;
   } catch (error) {
     spinner.fail(`Failed to install Node.js version ${version}`);
-    console.error(chalk.red('Error:'), error.message);
+    console.error(chalk.red("Error:"), error.message);
     return false;
   }
 }
@@ -103,10 +218,13 @@ async function installNodeVersion(version) {
  */
 async function uninstallNodeVersion(version) {
   try {
-    await execa('nvm', ['uninstall', version], { shell: true });
+    await runNvmCmd(["uninstall", version]);
     return true;
   } catch (error) {
-    console.error(chalk.red(`Failed to uninstall Node.js version ${version}:`), error.message);
+    console.error(
+      chalk.red(`Failed to uninstall Node.js version ${version}:`),
+      error.message
+    );
     return false;
   }
 }
@@ -117,14 +235,16 @@ async function uninstallNodeVersion(version) {
  */
 async function getGlobalPackages() {
   try {
-    const { stdout } = await execa('npm', ['ls', '-g', '--depth=0', '--json'], { shell: true });
+    const { stdout } = await execa("npm", ["ls", "-g", "--depth=0", "--json"], {
+      shell: true,
+    });
     const data = JSON.parse(stdout);
     if (data.dependencies) {
-      return Object.keys(data.dependencies).filter(pkg => pkg !== 'npm');
+      return Object.keys(data.dependencies).filter((pkg) => pkg !== "npm");
     }
     return [];
   } catch (error) {
-    console.error(chalk.red('Error getting global packages:'), error.message);
+    console.error(chalk.red("Error getting global packages:"), error.message);
     return [];
   }
 }
@@ -136,30 +256,55 @@ async function getGlobalPackages() {
  * @returns {Promise<string[]>} list of global packages excluding 'npm'
  */
 async function getGlobalPackagesForVersion(version) {
-  const originalVersion = await getCurrentNodeVersion();
-  console.log(chalk.cyan(`Getting global packages for Node.js version ${version}...`));
-
+  const isWindows = process.platform === "win32";
+  console.log(
+    chalk.cyan(`Getting global packages for Node.js version ${version}...`)
+  );
   try {
-    if (version !== originalVersion) {
-      await execa('nvm', ['use', version], { shell: true });
+    let stdout;
+    const major = parseInt(version.split(".")[0], 10);
+    if (isWindows) {
+      // Run all commands in a single shell session to ensure correct version
+      let cmd = `nvm use ${version} > NUL && `;
+      if (major >= 16) {
+        cmd += "npm install -g corepack > NUL 2>&1 && ";
+      }
+      cmd += "npm ls -g --depth=0 --json";
+      ({ stdout } = await execa.command(cmd, { shell: true }));
+    } else {
+      // Unix: run all commands in a single shell session
+      const nvmDir = getNvmDir();
+      let cmd = `export NVM_DIR=\"${nvmDir}\"; . \"${nvmDir}/nvm.sh\"; nvm use ${version} > /dev/null;`;
+      if (major >= 16) {
+        cmd += " npm install -g corepack > /dev/null 2>&1;";
+      }
+      cmd += " npm ls -g --depth=0 --json";
+      ({ stdout } = await execa.command(cmd, { shell: true }));
     }
-    const { stdout } = await execa('npm', ['ls', '-g', '--depth=0', '--json'], { shell: true });
     const data = JSON.parse(stdout);
-    const pkgs = data.dependencies ? Object.keys(data.dependencies).filter(pkg => pkg !== 'npm') : [];
-    console.log(chalk.green(`Found ${pkgs.length} global package(s) for version ${version}`));
+    const pkgs = data.dependencies
+      ? Object.keys(data.dependencies).filter((pkg) => pkg !== "npm")
+      : [];
+    if (major >= 16 && !pkgs.includes("corepack")) {
+      console.log(
+        chalk.yellow(
+          `[nvm-manager] Warning: corepack missing from global packages for Node.js ${version}`
+        )
+      );
+    }
+    console.log(
+      chalk.green(
+        `Found ${pkgs.length} global package(s) for version ${version}`
+      )
+    );
     return pkgs;
   } catch (err) {
-    console.log(chalk.yellow(`Failed to get global packages for Node.js version ${version}: ${err.message}`));
+    console.log(
+      chalk.yellow(
+        `Failed to get global packages for Node.js version ${version}: ${err.message}`
+      )
+    );
     return [];
-  } finally {
-    if (originalVersion && version !== originalVersion) {
-      try {
-        await execa('nvm', ['use', originalVersion], { shell: true });
-        console.log(chalk.gray(`Reverted to original Node.js version ${originalVersion}`));
-      } catch (revertErr) {
-        console.error(chalk.red(`Failed to revert to original Node.js version ${originalVersion}: ${revertErr.message}`));
-      }
-    }
   }
 }
 
@@ -169,8 +314,8 @@ async function getGlobalPackagesForVersion(version) {
  */
 async function getCurrentNodeVersion() {
   try {
-    const { stdout } = await execa('nvm', ['current'], { shell: true });
-    const version = stdout.trim().replace(/^v/, '');
+    const { stdout } = await runNvmCmd(["current"]);
+    const version = stdout.trim().replace(/^v/, "");
     if (/^\d+\.\d+\.\d+$/.test(version)) {
       return version;
     }
@@ -178,8 +323,8 @@ async function getCurrentNodeVersion() {
     // fallback below
   }
   try {
-    const { stdout } = await execa('node', ['-v'], { shell: true });
-    return stdout.trim().replace(/^v/, '');
+    const { stdout } = await execa("node", ["-v"], { shell: true });
+    return stdout.trim().replace(/^v/, "");
   } catch {
     return null;
   }
@@ -192,9 +337,15 @@ async function getCurrentNodeVersion() {
  */
 async function getInstalledPackageVersion(packageName) {
   try {
-    const { stdout } = await execa('npm', ['ls', '-g', packageName, '--json', '--depth=0'], { shell: true });
+    const { stdout } = await execa(
+      "npm",
+      ["ls", "-g", packageName, "--json", "--depth=0"],
+      { shell: true }
+    );
     const data = JSON.parse(stdout);
-    return data.dependencies && data.dependencies[packageName] ? data.dependencies[packageName].version : null;
+    return data.dependencies && data.dependencies[packageName]
+      ? data.dependencies[packageName].version
+      : null;
   } catch {
     return null;
   }
@@ -207,7 +358,9 @@ async function getInstalledPackageVersion(packageName) {
  */
 async function getLatestPackageVersion(packageName) {
   try {
-    const { stdout } = await execa('npm', ['view', packageName, 'version'], { shell: true });
+    const { stdout } = await execa("npm", ["view", packageName, "version"], {
+      shell: true,
+    });
     return stdout.trim();
   } catch {
     return null;
@@ -221,10 +374,14 @@ async function getLatestPackageVersion(packageName) {
  */
 async function getPackageDescription(packageName) {
   try {
-    const { stdout } = await execa('npm', ['view', packageName, 'description'], { shell: true });
-    return stdout.trim() || 'No description available.';
+    const { stdout } = await execa(
+      "npm",
+      ["view", packageName, "description"],
+      { shell: true }
+    );
+    return stdout.trim() || "No description available.";
   } catch {
-    return 'No description available.';
+    return "No description available.";
   }
 }
 
@@ -233,12 +390,35 @@ async function getPackageDescription(packageName) {
  * @param {string} packageName
  * @returns {Promise<boolean>} success
  */
-async function installGlobalPackage(packageName) {
+/**
+ * Install a global npm package for a specific Node.js version
+ * @param {string} packageName
+ * @param {string} [nodeVersion] Optional Node.js version to use for install
+ * @returns {Promise<boolean>} success
+ */
+async function installGlobalPackage(packageName, nodeVersion) {
   try {
-    await execa('npm', ['install', '-g', packageName], { shell: true });
+    if (nodeVersion) {
+      const isWindows = process.platform === "win32";
+      if (isWindows) {
+        const cmd = `nvm use ${nodeVersion} > NUL && npm install -g ${packageName}`;
+        await execa.command(cmd, { shell: true });
+      } else {
+        const nvmDir = getNvmDir();
+        const cmd = `export NVM_DIR=\"${nvmDir}\"; . \"${nvmDir}/nvm.sh\"; nvm use ${nodeVersion} > /dev/null; npm install -g ${packageName}`;
+        await execa.command(cmd, { shell: true });
+      }
+    } else {
+      await execa("npm", ["install", "-g", packageName], { shell: true });
+    }
     return true;
   } catch (error) {
-    console.error(chalk.red(`Failed to install ${packageName}:`), error.message);
+    console.error(
+      chalk.red(
+        `Failed to install ${packageName} for Node.js ${nodeVersion || ""}:`
+      ),
+      error.message
+    );
     return false;
   }
 }
@@ -251,7 +431,7 @@ async function installGlobalPackage(packageName) {
  */
 async function isVersionStillListed(version) {
   try {
-    const { stdout } = await execa('nvm', ['list'], { shell: true });
+    const { stdout } = await runNvmCmd(["list"]);
     const regex = new RegExp(`\\b${version}\\b`);
     return regex.test(stdout);
   } catch {

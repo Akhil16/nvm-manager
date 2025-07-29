@@ -1,24 +1,28 @@
 {
   "name": "nvm-manager",
   "version": "1.0.3",
-  "description": "A modern CLI tool to manage Node.js versions and global packages using nvm",
+  "description": "A modern CLI tool to manage Node.js versions and global packages using nvm/nvm-windows.",
   "main": "src/index.js",
   "bin": {
     "nvm-manager": "./bin/nvm-manager"
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "npm i -g . && nvm-manager list-all"
+    "test": "npm i -g . && nvm-manager list-all",
+    "version": "npm version patch",
+    "publish": "npm publish"
   },
   "keywords": [
     "nvm",
+    "nvm-windows",
+    "node-version-manager",
     "node",
     "nodejs",
     "version-manager",
     "global-packages",
     "cli"
   ],
-  "author": "Generated with AI assistance",
+  "author": "Akhilendu Chaturvedi",
   "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",
